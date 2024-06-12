@@ -10,7 +10,7 @@ DOI: 10.48550/arXiv.2403.08984
 
 ArXiv: https://arxiv.org/abs/2403.08984
 
-The dataset can be find on HuggingFace:
+The dataset can be found on HuggingFace:
 - https://huggingface.co/datasets/carlogrigioni/safe-road-crossing-aw-dataset
 
 
