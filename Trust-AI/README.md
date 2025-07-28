@@ -1,6 +1,6 @@
-# Explainable Multi-Sensor Fusion by Dynamic Bayesian Networks
+#  Balancing Accuracy and Interpretability in Multi-Sensor Fusion through Dynamic Bayesian Networks
 
-This is the official repository for the paper "Explainable Multi-Sensor Fusion by Dynamic Bayesian Networks" submitted at the "
+This is the official repository for the paper "Balancing Accuracy and Interpretability in Multi-Sensor Fusion through Dynamic Bayesian Networks" submitted at the "
 
 The dataset can be find on HuggingFace:
 - https://huggingface.co/datasets/carlogrigioni/safe-road-crossing-aw-dataset
