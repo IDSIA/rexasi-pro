@@ -7,7 +7,7 @@ The dataset can be find on HuggingFace:
 
 
 ## Paper
-#### Explainable Multi-Sensor Fusion by Dynamic Bayesian Networks
+#### Balancing Accuracy and Interpretability in Multi-Sensor Fusion through Dynamic Bayesian Networks
 Franca Corradini, Carlo Grigioni, Alessandro Antonucci, Jerome Guzzi and Francesco Flammini
 
 ## Code
@@ -23,3 +23,11 @@ Specifies a Deep Neural Network architecture and performs 7 fold LOOCV by traini
 ### winkler_to_csv.py
 Calculates the Winkler score for all prediction intervals.
 The Winkler score is a metric used to evaluate the quality of a prediction interval by penalizing both the width of the interval and whether the true value lies outside it.
+
+## Acknowledgments
+This work was supported by the Swiss State Secretariat for Education,
+Research and lnnovation (SERI). The project has been selected within the
+European Union’s Horizon Europe research and innovation programme under grant
+agreement: HORIZON-CL4-2021-HUMAN-01-01. Views and opinions expressed are
+however those of the authors only and do not necessarily reflect those of the funding
+agencies, which cannot be held responsible for them.

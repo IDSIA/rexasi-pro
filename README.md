@@ -18,7 +18,7 @@ The dataset can be found on HuggingFace:
 
 ## Paper
 
-#### Explainable Multi-Sensor Fusion by Dynamic Bayesian Networks
+#### Balancing Accuracy and Interpretability in Multi-Sensor Fusion through Dynamic Bayesian Networks
 Franca Corradini, Carlo Grigioni, Alessandro Antonucci, Jerome Guzzi and Francesco Flammini
 
 #### Experimental Evaluation of Road-Crossing Decisions by Autonomous Wheelchairs against Environmental Factors

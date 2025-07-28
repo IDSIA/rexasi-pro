@@ -49,3 +49,11 @@ For the fusion of data sensors without considering the imputation, plots and met
 
 ### safe_road_data.zip
 Folder containing dataset required for our elaboration and our results.
+
+## Acknowledgments
+This work was supported by the Swiss State Secretariat for Education,
+Research and lnnovation (SERI). The project has been selected within the
+European Union’s Horizon Europe research and innovation programme under grant
+agreement: HORIZON-CL4-2021-HUMAN-01-01. Views and opinions expressed are
+however those of the authors only and do not necessarily reflect those of the funding
+agencies, which cannot be held responsible for them.
