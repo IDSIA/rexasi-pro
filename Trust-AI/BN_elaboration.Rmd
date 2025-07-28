@@ -1,0 +1,526 @@
+---
+title: "Balancing Accuracy and Interpretability in Multi-Sensor Fusion through Dynamic Bayesian Networks"
+output: html_notebook
+---
+The complete structure of our BN is composed by:
+
+ - The latent variable 'X' representing the actual position (state) of the obstacle
+ 
+ - The measurable variable 'Si' representing the sensor "i" recording the position (state) of the obstacle. Evidences can be collected. All sensors are listed below in the sensors list.
+ 
+ - 'Mi' define the missingness of the measure of the sensor i.
+ 
+ Sensors list:
+ 
+ - Sr: Range sensors
+ 
+ - Sw_v5: Camera on the wheelchair with yolo v5 model
+ 
+ - Sd_v5: Camera on the drone with yolo v5 model
+ 
+ - Sw_FT: Camera on the wheelchair with yolo v8 fine tuned
+ 
+ - Sd_FT: Camera on the drone with yolo fine tuned
+ 
+All required library to upload
+```{r}
+#If required, download package for dynamic BN
+#install.packages("openxlsx")
+#install.packages("bnlearn")
+#install.packages("data.table")
+#install.packages('dbnR')
+#install.packages('visNetwork')
+#latest version
+#install.packages('devtools')
+#devtools::install_github("dkesada/dbnR")
+#install.packages("dplyr")
+#install.packages("jtools")
+
+
+library(tidyverse) 
+library(grid)
+library(graph)
+library(Rgraphviz)
+library(gRbase)
+library(RBGL)
+library(bnlearn)
+library(magrittr) 
+library(dplyr)    
+library(plyr)
+library(gRain)
+library(visNetwork)
+library(devtools)
+library(dbnR)
+library(Metrics)
+library(writexl)
+library(openxlsx)
+library(jtools)
+library(stringr)
+```
+
+Dataset elaboration for NN and XGBoost to set three timestamp 
+
+```{r}
+#import data for range sensor
+filter_list<-c('original','rain_1','rain_2','fog_1')
+exp_list=c(0,1,2,3,4,5,6,7,8,9,10,11,12,13)
+#type_imputation_list=c('imputation_2')
+size=3
+folder_timeslices3=paste("dataset_timeslices3",sep='')
+if (!dir.exists(folder_timeslices3)) dir.create(folder_timeslices3)
+
+for (filter in filter_list){
+  for (exp in exp_list){
+    Data<- read.csv(paste("imputed_data/imputed_",filter,"_run_",exp,".csv",sep=''))
+    Data <- fold_dt(Data, size) 
+    #Save new temporized dataset
+    #name_dataset=paste("imputed_",filter,"_run_",exp, sep='')
+    results_file_name=paste(folder_timeslices3,"/imputed_",filter,"_run_",exp,".csv",sep='')
+    write.csv(Data,results_file_name, row.names = TRUE) 
+  }
+}
+```
+
+Function to calculate the AVARAGE model (simple mean of the available outputs of the sensors), and the label of the sensors functioning.
+- label_no_sens=1 if no sensor is working 
+- label_no_sens=0 otherwise
+```{r}
+media <- function(dataset,num_exp){
+  n <- nrow(dataset)
+  media <- vector(,n)
+  label_no_sens <- vector(,n)
+  for (i in 1:n){
+    x <- c()  
+    if (dataset$Mw_FT_t_0[i]==0){
+      x <- append(x, dataset$Sw_FT_t_0[i])
+    }
+    if (dataset$Md_FT_t_0[i]==0){
+      x <- append(x, dataset$Sd_FT_t_0[i])
+    }
+    if (dataset$Mw_v5_t_0[i]==0){
+      x <- append(x, dataset$Sw_v5_t_0[i])
+    }
+    if (dataset$Md_v5_t_0[i]==0){
+      x <- append(x, dataset$Sd_v5_t_0[i])
+    }
+    if (dataset$Mr_t_0[i]==0){
+      x <- append(x, dataset$Sr_t_0[i])
+    }
+    if (length(x)==0){
+
+      if(i>1){
+        #print('qua')
+        media[i] <- media[i-1]
+        label_no_sens[i] <- 1
+        
+      }else{
+        print('in media uno step indietro')
+        
+        if (dataset$Mw_FT_t_1[i]==0){
+          x <- append(x, dataset$Sw_FT_t_1[i])
+        }
+        if (dataset$Md_FT_t_1[i]==0){
+          x <- append(x, dataset$Sd_FT_t_1[i])
+        }
+        if (dataset$Mw_v5_t_1[i]==0){
+          x <- append(x, dataset$Sw_v5_t_1[i])
+        }
+        if (dataset$Md_v5_t_1[i]==0){
+          x <- append(x, dataset$Sd_v5_t_1[i])
+        }
+        if (dataset$Mr_t_1[i]==0){
+          x <- append(x, dataset$Sr_t_1[i])
+        }
+        
+        if (length(x)==0){
+          print('in media due step indietro')
+            if (dataset$Mw_FT_t_2[i]==0){
+              x <- append(x, dataset$Sw_FT_t_2[i])
+            }
+            if (dataset$Md_FT_t_2[i]==0){
+              x <- append(x, dataset$Sd_FT_t_2[i])
+            }
+            if (dataset$Mw_v5_t_2[i]==0){
+              x <- append(x, dataset$Sw_v5_t_2[i])
+            }
+            if (dataset$Md_v5_t_2[i]==0){
+              x <- append(x, dataset$Sd_v5_t_2[i])
+            }
+            if (dataset$Mr_t_2[i]==0){
+              x <- append(x, dataset$Sr_t_2[i])
+            }
+        }
+        if (length(x)==0){
+          print('ERROR')}
+        
+        label_no_sens[i] <- 0
+        media[i] <- mean(x, na.rm=TRUE)
+      }
+    }else{
+      label_no_sens[i] <- 0
+      media[i] <- mean(x, na.rm=TRUE)
+    }
+  }
+
+  results <- list("label_no_sens" = label_no_sens, "media" = media) 
+  return(results)
+}
+```
+
+Function to create nested folders
+```{r}
+create_nested_folder <- function(base, ...) {
+  path <- file.path(base, ...)
+  if (!dir.exists(path)) dir.create(path, recursive = TRUE)
+  return(path)
+}
+```
+
+
+Set configuration:
+```{r}
+#type_imputation_list=c('imputation_2')
+filter_all<-c('original','rain_1','rain_2','fog_1')
+filter_list_val<-filter_all
+value_seed=123
+
+# to set the fold for seven fold cross validation:
+set_cross=c(4,13,5,12,0,10,3,11,2,9,6,7,1,8)
+fold1=c(4,13)
+fold2=c(5,12)
+fold3=c(0,10)
+fold4=c(3,11)
+fold5=c(2,9)
+fold6=c(6,7)
+fold7=c(1,8)
+fold_list=list(fold1,fold2,fold3,fold4,fold5,fold6,fold7)
+fold_list_name=list('fold1','fold2','fold3','fold4','fold5','fold6','fold7')
+
+#Chose number of temporal slices insert a vector of len n where n is the number of architecture we want to create.
+interval_steps=c(3)
+
+#labels of sensors 
+list_sensors_label= c('w_FT','d_FT','w_v5','d_v5','r')
+
+#chose if including inter-slices arcs between Si
+#inter_arcs_list=c('no_arcs')
+#label_acceleration_list=c(TRUE )
+
+#setwd("~/Documents/projects/Bayesian Network/bella copia per condivisione 21_07_2025")  # Example for Windows
+
+```
+
+
+
+Upload dataset
+```{r}
+#for (type_imputation in type_imputation_list){
+#  cat("Processing type_imputation:", type_imputation, "\n")
+for (filter in filter_all){
+  for (exp in set_cross){
+      #print(exp)
+      
+      #url<-paste("~/Documents/projects/Bayesian Network/bella copia per condivisione 21_07_2025/preprocessing_results_02/imputation_2/prepr_data_",filter,"_run_",exp,".csv",sep='')
+      
+      url <- paste0("imputed_data/imputed_",filter,"_run_",exp,".csv")
+      Data<- read.csv(url)
+      Data <- Data [c("distance_tracker", "distance_wheelchair_FT", "missing_w_FT","distance_drone_FT", "missing_d_FT","distance_wheelchair_v5", "missing_w_v5","distance_drone_v5", "missing_d_v5","distance_range", "missing_range","all_missing")] %>%
+      filter(!is.na(missing_w_FT))  %>%
+      filter(!is.na(missing_d_FT))  %>%
+      filter(!is.na(missing_w_v5))  %>%
+      filter(!is.na(missing_d_v5))  %>%
+      filter(!is.na(missing_range))  %>%
+      filter(!is.na(distance_tracker))  %>%
+      filter(!is.na(distance_wheelchair_FT))  %>%
+      filter(!is.na(distance_drone_FT))  %>%
+      filter(!is.na(distance_wheelchair_v5))  %>%
+      filter(!is.na(distance_drone_v5))  %>%
+      filter(!is.na(distance_range))  %>%
+      plyr::rename(c("distance_tracker" = "X")) %>%
+      plyr::rename(c("distance_wheelchair_FT" = "Sw_FT")) %>%
+      plyr::rename(c("missing_w_FT" = "Mw_FT")) %>%
+      plyr::rename(c("distance_drone_FT" = "Sd_FT")) %>%
+      plyr::rename(c("missing_d_FT" = "Md_FT")) %>%
+      plyr::rename(c("distance_wheelchair_v5" = "Sw_v5")) %>%
+      plyr::rename(c("missing_w_v5" = "Mw_v5")) %>%
+      plyr::rename(c("distance_drone_v5" = "Sd_v5")) %>%
+      plyr::rename(c("missing_d_v5" = "Md_v5")) %>%
+      plyr::rename(c("distance_range" = "Sr")) %>%
+      plyr::rename(c("missing_range" = "Mr")) %>%
+      mutate(Mw_FT=factor(Mw_FT,levels=c("0","1")))%>%
+      mutate(Md_FT=factor(Md_FT,levels=c("0","1"))) %>%
+      mutate(Mw_v5=factor(Mw_v5,levels=c("0","1"))) %>%
+      mutate(Md_v5=factor(Md_v5,levels=c("0","1"))) %>%
+      mutate(Mr=factor(Mr,levels=c("0","1")))
+      
+      texto <- paste("Data_",exp, "_",filter,"<- Data", sep='')
+      eval(parse(text = texto)) 
+  }
+}
+
+```
+
+
+```{r}
+CASE='CASE1'
+
+#folder with the results of thee Kalman filter
+url_Kalman_filter_pre <- paste0("Kalman_filter_results")
+  
+# ==== Folders for the results ====
+# FOLDER FOR PLOTS
+#folder_plot <- create_nested_folder("plots")
+
+# FOLDER FOR PERFORMANCE RESULTS
+folder_results <- create_nested_folder("BNresults")
+
+# FOLDER FOR csv plot
+folder_csv <- create_nested_folder(folder_results,"data_for_plot/")
+
+# ==== Create dataframe to collect performance ====
+
+rox_names <- unlist(lapply(filter_all, function(f) paste(f, fold_list_name, sep = "_")))
+columns_name <- c('KF','baseline')
+performance <- data.frame(matrix(NA, nrow = length(rox_names), ncol =length(columns_name)))
+rownames(performance) <-  rox_names
+colnames(performance) <- columns_name
+```
+
+```{r}
+#for (inter_arcs in inter_arcs_list){
+#  cat("Processing inter_arcs:", inter_arcs, "\n")
+#for (label_acceleration in label_acceleration_list){
+#  cat("Processing label_acceleration:", label_acceleration, "\n")
+
+
+for (step in interval_steps){
+  cat("Processing step:", step, "\n")
+  
+  # ==== Create Bayesian network architecture ====
+  n_slices <- step
+  final_string1=''
+  final_string2=''
+  #nodes names to be collected in BN plots
+  plot_list <- vector("list", length = n_slices)
+  
+  for (t in 0:(n_slices-1)){
+    X_string=paste('X_t_',t,sep='')
+    
+    if (t==(n_slices-1)){
+      # Oldest slice: different structure
+      list1=c()
+      for (sens in list_sensors_label){
+        M_string=paste('M',sens,'_t_',t,sep='')
+        S_string=paste('S',sens,'_t_',t,sep='')
+        list1= append(list1,S_string,after = length(list1))
+        list1= append(list1,M_string,after = length(list1))
+        final_string1=paste(final_string1,'[',M_string,']','[',S_string,'|',X_string,':',M_string,']',sep='')
+      }
+      final_string1=paste('[',X_string,']',final_string1,sep='')
+      plot_list[[t+1]] <- list1
+    }else if (n_slices!=1){
+      # Middle slices (standard structure)
+      string2=''
+      list2=c()
+      
+      for (sens in list_sensors_label){
+        M_string=paste('M',sens,'_t_',t,sep='')
+        S_string=paste('S',sens,'_t_',t,sep='')
+        #S_string_old=paste('S',sens,'_t_',t+1,sep='')
+        
+        list2= append(list2,S_string,after = length(list2))
+        list2= append(list2,M_string,after = length(list2))
+        
+        string2=paste(string2,'[',M_string,']','[',S_string,'|',X_string,':',M_string,']',sep='')
+      }
+  
+      plot_list[[t+1]] <- list2
+      string2=paste(string2,'[',X_string,'|X_t_',t+1,sep='')
+      if (t!=n_slices-2){
+        string2=paste(string2,':X_t_',t+2,sep='')
+      }
+      final_string2=paste(final_string2,string2,']',sep='')
+    }
+  }
+  # Final string to create BN
+  full_network_string=paste(final_string1,final_string2,sep='')
+  
+  # BN realization
+  bn_all=model2network(full_network_string)
+  
+  # Architecture Plot
+  graphviz.plot(bn_all, layout = "dot", shape='circle', fontsize=18, groups = plot_list)
+
+  # ==== CROSS VALIDATION ====
+  for (fold in fold_list){
+    print(paste("FOLD:", fold))
+    train_set<- setdiff(set_cross,as.vector(fold))
+    exp_list_validation <- fold
+  
+    #Creation of the training dataset
+      
+    size=n_slices
+    
+    for (exp in train_set){
+      Data <- get(paste0("Data_", exp,"_original"))
+      Data$all_missing <- NULL
+      
+      if (size==1){
+       names(Data)[names(Data)=='X'] <- 'X_t_0'
+      
+       for (sens in list_sensors_label){
+         texto <-paste0("names(Data)[names(Data)=='S",sens,"'] <- 'S",sens,"_t_0'")
+         eval(parse(text = texto)) 
+         texto <-paste0("names(Data)[names(Data)=='M",sens,"'] <- 'M",sens,"_t_0'")
+         eval(parse(text = texto)) 
+       }
+       f_dt <- Data 
+      }else{
+       f_dt <- fold_dt(Data, size) 
+      }
+      if (exp==train_set[1]){
+        f_dt_all_train <- f_dt
+      }else if(exp %in% train_set){
+        f_dt_all_train <- rbind(f_dt_all_train,f_dt) }
+      else{
+        print('ERRORE')
+        texto <- paste0("f_dt_val_",exp," <- f_dt")
+        eval(parse(text = texto)) 
+      }
+    }
+    
+    # ==== BN fitting operation with training dataset ====
+  
+    shuffled_data <- f_dt_all_train[sample(nrow(f_dt_all_train)), ]
+    bn_fitted= bn.fit(bn_all, shuffled_data, method = "mle-cg")
+    
+    
+    # ==== BN Validation operation with validation dataset ====
+    for (filter in filter_list_val){
+      cat("Processing filter:", filter, "\n")  
+      size=n_slices
+      for (exp in exp_list_validation){
+        Data <- get(paste0("Data_", exp,"_",filter))
+        if (size==1){
+         names(Data)[names(Data)=='X'] <- 'X_t_0'
+         names(Data)[names(Data)=='all_missing'] <- 'all_missing_t_0'
+         for (sens in list_sensors_label){
+           texto <-paste0("names(Data)[names(Data)=='S",sens,"'] <- 'S",sens,"_t_0'")
+           eval(parse(text = texto)) 
+           texto <-paste0("names(Data)[names(Data)=='M",sens,"'] <- 'M",sens,"_t_0'")
+           eval(parse(text = texto)) 
+         }
+         f_dt <- Data 
+        }else{
+         f_dt <- fold_dt(Data, size) 
+        }
+        texto <- paste0("f_dt_val_",exp," <- f_dt")
+        eval(parse(text = texto)) 
+      }
+      
+      # ==== Prediction step ====
+        
+      for (exp in exp_list_validation){
+        f_dt_val <- get(paste0("f_dt_val_",exp))
+        # Specify columns to remove
+        label_missing=f_dt_val$all_missing_t_0
+        cols_to_remove <- c(sapply(1:step, function(i) paste('X_t_',i-1,sep='')),sapply(1:step, function(i) paste('all_missing_t_',i-1,sep='')))
+        f_dt_val <- f_dt_val %>% select(-all_of(cols_to_remove))
+        
+        # Prediction operation with cpdist
+        mean_preds <- c()
+        sd_preds <- c()
+        for( q in 1:nrow(f_dt_val)){
+          evidence <- as.list(f_dt_val[q,])
+          set.seed(value_seed)
+          preds <- cpdist(bn_fitted,nodes = "X_t_0",evidence=evidence, method = "lw", query.nodes=names(f_dt_val), debug=FALSE)
+          w <-  attr(preds,"weights")
+          mean_preds <- append(mean_preds,weighted.mean(preds$X_t_0,w))
+          sd_preds <- append(sd_preds,wtd.sd(preds$X_t_0,w))
+        }
+        texto <-paste0("c11111_exp",exp,"=mean_preds")
+        eval(parse(text = texto)) 
+        texto <-paste0("c11111_exp",exp,"_uncert=sd_preds")
+        eval(parse(text = texto))     
+      }
+      
+      
+      # ==== Collect Results and performance metrics ====
+    
+      for (exp in exp_list_validation){
+        #print(paste('exp_list_validation for plots=',exp))
+        
+        #comparison with Kalman Filter
+        url_Kalman_filter <- paste(url_Kalman_filter_pre,"/KF_results_",filter,"_run_",exp,".csv",sep='')
+        KF_data<- read.csv(url_Kalman_filter)
+         
+        KF_predictions <- KF_data[(step:nrow(KF_data)),'predictions']
+        KF_uncertainty <- KF_data[(step:nrow(KF_data)),'uncertainty']
+        
+        df <- get(paste0("f_dt_val_",exp))
+        c11111 <- get(paste0("c11111_exp",exp))
+        c11111_sd <- get(paste0("c11111_exp",exp,"_uncert"))
+        baseline<- media(df,exp)
+        label_sensors<- baseline$label_no_sens
+        baseline <- baseline$media
+        index=1:nrow(df)
+      
+        
+        # Results collection for each validation dataset/run
+      
+        
+        if (exp==exp_list_validation[1]){
+          c11111_last <- c11111
+          c11111_sd_last <- c11111_sd
+          baseline_last <- baseline
+          df_last <- df
+          KF_predictions_last <- KF_predictions
+        }else{
+          c11111_final <- c(c11111_last,c11111)
+          c11111_sd_final <- c(c11111_sd_last,c11111_sd)
+          baseline_final <- c(baseline_last,baseline)
+          KF_predictions_final <- c(KF_predictions_last,KF_predictions)
+          df_final <- rbind(df_last,df)
+        }
+        
+        data_for_plots=data.frame(1:length(c11111),
+                                  baseline,
+                                  c11111,c11111_sd,
+                                  df$X_t_0,
+                                  df$Sw_FT_t_0*(1-(as.numeric(df$Mw_FT_t_0)-1)),
+                                  df$Sd_FT_t_0*(1-(as.numeric(df$Md_FT_t_0)-1)),
+                                  df$Sw_v5_t_0*(1-(as.numeric(df$Mw_v5_t_0)-1)),
+                                  df$Sd_v5_t_0*(1-(as.numeric(df$Md_v5_t_0)-1)),
+                                  df$Sr_t_0*(1-(as.numeric(df$Mr_t_0)-1)),
+                                  KF_predictions,KF_uncertainty) 
+        
+        colnames(data_for_plots) <- c('time','average','BN_mean','BN_sd','X_t_0','Sw_FT_t_0','Sd_FT_t_0','Sw_v5_t_0','Sd_v5_t_0','Sr_t_0','KF_predictions','KF_sd')
+        data_for_plots[data_for_plots==0] <- NA
+        
+        # ==== Save Results====
+        write.csv(data_for_plots, paste0(folder_csv,"data_for_plot_",filter,"_exp",exp,".csv"),row.names = FALSE)
+      }
+    
+      num_folder<- which(sapply(fold_list, function(x) identical(x, fold)))
+      
+      performance[paste0(filter,'_fold',num_folder),paste0('step_',step)] <-  rmse(df_final$X_t_0,c11111_final)
+      performance[paste0(filter,'_fold',num_folder),paste0('baseline')] <- rmse(df_final$X_t_0,baseline_final)
+      performance[paste0(filter,'_fold',num_folder),paste0('KF')] <- rmse(df_final$X_t_0,KF_predictions_final)
+    }
+    print(paste0('FINE fold',fold))
+  }
+  print(paste0('FINE step',step))
+}
+
+# ==== Save Metrics====
+write.csv(performance, paste0(folder_results,"/RMSE_comparison_results.csv"))
+```
+
+
+```{r}
+#write.xlsx(performance, paste0(folder_results,"/results_crossvalFINALE.xlsx"), rowNames = TRUE)
+#write.xlsx(performance_arcs, paste0(folder_results,"/results_crossvalFINALE_with arcs.xlsx"), rowNames = TRUE)
+#write.xlsx(performance_noarcs, paste0(folder_results,"/results_crossvalFINALE_withoutarcs.xlsx"), rowNames = TRUE)
+
+```
+
