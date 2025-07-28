@@ -1,5 +1,0 @@
-# Ignore dataset directory
-Trust-AI/dataset/
-
-# Ignore all CSV files
-*.csv
