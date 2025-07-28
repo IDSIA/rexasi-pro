@@ -14,7 +14,7 @@ Franca Corradini, Carlo Grigioni, Alessandro Antonucci, Jerome Guzzi and Frances
 
 ### xgb_CASE1.ipynb
 
-Performs 7 fold LOOCV by training 7 eXtreme Gradient Boosting models models with 100 extimators and random seed 0 on original data. Then tests for original and augmented rain weak, rain strong and fog filters. Evaluates RMSE for each data fold.
+Performs 7 fold LOOCV by training 7 eXtreme Gradient Boosting models with 100 extimators and random seed 0 on original data. Then tests for original and augmented rain weak, rain strong and fog filters. Evaluates RMSE for each data fold.
 
 ### NN_CASE1.ipynb
 
