@@ -1,8 +1,7 @@
 # REliable & eXplainable Swarm Intelligence for People with Reduced mObility
 
-Official repository for the paper "Explainable Multi-Sensor Fusion by Dynamic Bayesian Networks" submitted at the "European Workshop on Trustworthy AI" (TRUST-AI 2025) at the "28th European Conference on Artificial Intelligence" (ECAI)
+Official repository for the paper "Balancing Accuracy and Interpretability in Multi-Sensor Fusion through Dynamic Bayesian Networks" submitted at the "European Workshop on Trustworthy AI" (TRUST-AI 2025) at the "28th European Conference on Artificial Intelligence" (ECAI)
 
-Arxiv:
 
 Official repository for the paper "Experimental Evaluation of Road-Crossing Decisions by Autonomous Wheelchairs Against Environmental Factors", published in the proceedings of the 8th International Conference on Intelligent Transport Systems (INTSYS 2024), Springer LNCS, 2025.
 DOI: 10.1007/978-3-031-86370-7_22
